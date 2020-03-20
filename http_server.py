@@ -137,13 +137,15 @@ def server(log_buffer=sys.stderr):
                     data = conn.recv(1024)
                     request += data.decode('utf8')
 
-                    # During debugging it appears as though sometimes the
-                    # browser would send an empty request or some how the
-                    # conn.recv(1024) would somehow not get any request data.
+                    # During debugging it appeared as though sometimes the
+                    # browser would send an empty request or the
+                    # conn.recv(1024) would somehow not get any request data
+                    # and the connection would stay open and get stuck in this
+                    # while loop trying to recieve data that never came.
                     # This will check if the length of the data is 0 and break
                     # the loop and let the next request resolve.
                     # 
-                    # This bug reproduced in both:
+                    # This bug reproduced on Windows 10 Pro x64 in both:
                     # Google Chrome Version 80.0.3987.149 (Official Build) (64-bit)
                     # Microsoft Edge Version 80.0.361.66 (Official build) (64-bit)
                     if '\r\n\r\n' in request or len(data) == 0:
