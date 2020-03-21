@@ -1,3 +1,5 @@
+import mimetypes
+import os
 import socket
 import sys
 import traceback
@@ -18,22 +20,23 @@ def response_ok(body=b"This is a minimal response", mimetype=b"text/plain"):
         <html><h1>Welcome:</h1></html>\r\n
         '''
     """
+    response = [b"HTTP/1.1 200 OK",
+                b"Content-Type: " + mimetype,
+                b"",
+                body]
 
-    # TODO: Implement response_ok
-    return b""
+    return b"\r\n".join(response)
 
 def response_method_not_allowed():
     """Returns a 405 Method Not Allowed response"""
 
-    # TODO: Implement response_method_not_allowed
-    return b""
+    return b"HTTP/1.1 405 Method Not Allowed\r\n"
 
 
 def response_not_found():
     """Returns a 404 Not Found response"""
 
-    # TODO: Implement response_not_found
-    return b""
+    return b"HTTP/1.1 404 Not Found\r\n"
 
 
 def parse_request(request):
@@ -43,9 +46,13 @@ def parse_request(request):
     This server only handles GET requests, so this method shall raise a
     NotImplementedError if the method of the request is not GET.
     """
+    requested = request.split(' ')
+    request_method = requested[0]
 
-    # TODO: implement parse_request
-    return ""
+    if request_method == "POST":
+        raise NotImplementedError()
+
+    return requested[1]
 
 def response_path(path):
     """
@@ -75,22 +82,39 @@ def response_path(path):
 
     """
 
-    # TODO: Raise a NameError if the requested content is not present
-    # under webroot.
+    current_dir = os.path.dirname(os.path.realpath(__file__))
+    query = os.path.join(current_dir, "webroot", path[1:])
 
-    # TODO: Fill in the appropriate content and mime_type give the path.
-    # See the assignment guidelines for help on "mapping mime-types", though
-    # you might need to create a special case for handling make_time.py
-    #
-    # If the path is "make_time.py", then you may OPTIONALLY return the
-    # result of executing `make_time.py`. But you need only return the
-    # CONTENTS of `make_time.py`.
+    if not os.path.exists(query):
+        raise NameError(f"{path} not found.")
     
     content = b"not implemented"
     mime_type = b"not implemented"
 
+    if os.path.isdir(query):
+        mime_type = mimetypes.types_map['.txt'].encode()
+        dir_info = "\r\n".join(os.listdir(query))
+        content = dir_info.encode()
+    else:
+        mime_type = mimetypes.guess_type(query)[0].encode()
+        with open(query, "rb") as read_file:
+            content = read_file.read()
+
     return content, mime_type
 
+def handle_request(request):
+    print("Request received:\n{}\n\n".format(request))
+
+    try:
+        path = parse_request(request)
+        content, mime_type = response_path(path)
+        response = response_ok(content, mime_type)
+    except NameError:
+        response = response_not_found()
+    except NotImplementedError:
+        response = response_method_not_allowed()
+
+    return response
 
 def server(log_buffer=sys.stderr):
     address = ('127.0.0.1', 10000)
@@ -112,31 +136,34 @@ def server(log_buffer=sys.stderr):
                     data = conn.recv(1024)
                     request += data.decode('utf8')
 
-                    if '\r\n\r\n' in request:
+                    # During debugging it appeared as though sometimes the
+                    # browser would send an empty request or the
+                    # conn.recv(1024) would somehow not get any request data
+                    # and the connection would stay open and get stuck in this
+                    # while loop trying to recieve data that never came.
+                    # This will check if the length of the data is 0 and break
+                    # the loop and let the next request resolve.
+                    # 
+                    # This bug reproduced on Windows 10 Pro x64 in both:
+                    # Google Chrome Version 80.0.3987.149 (Official Build) (64-bit)
+                    # Microsoft Edge Version 80.0.361.66 (Official build) (64-bit)
+                    if '\r\n\r\n' in request or len(data) == 0:
                         break
-		
 
-                print("Request received:\n{}\n\n".format(request))
+                # To address the issue above, check to see if the request is
+                # not empty.  If its not, handle the request as normal (logic
+                # extract to handle_request()), otherwise print that an empty
+                # request occured and allow the connection to close.
+                if len(request) > 0:
+                    response = handle_request(request)
+                    conn.sendall(response)
+                else:
+                    print('An empty request was recieved.', file=log_buffer)
 
-                # TODO: Use parse_request to retrieve the path from the request.
-
-                # TODO: Use response_path to retrieve the content and the mimetype,
-                # based on the request path.
-
-                # TODO; If parse_request raised a NotImplementedError, then let
-                # response be a method_not_allowed response. If response_path raised
-                # a NameError, then let response be a not_found response. Else,
-                # use the content and mimetype from response_path to build a 
-                # response_ok.
-                response = response_ok(
-                    body=b"Welcome to my web server",
-                    mimetype=b"text/plain"
-                )
-
-                conn.sendall(response)
             except:
                 traceback.print_exc()
             finally:
+                print("Closing {0}:{1}".format(*addr), file=log_buffer)
                 conn.close() 
 
     except KeyboardInterrupt:
