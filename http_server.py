@@ -92,7 +92,7 @@ def response_path(path):
     mime_type = b"not implemented"
 
     if os.path.isdir(query):
-        mime_type = b"text/plain"
+        mime_type = mimetypes.types_map['.txt'].encode()
         dir_info = "\r\n".join(os.listdir(query))
         content = dir_info.encode()
     else:
@@ -105,9 +105,8 @@ def response_path(path):
 def handle_request(request):
     print("Request received:\n{}\n\n".format(request))
 
-    path = parse_request(request)
-
     try:
+        path = parse_request(request)
         content, mime_type = response_path(path)
         response = response_ok(content, mime_type)
     except NameError:
